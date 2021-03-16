@@ -1,13 +1,14 @@
 ---
 name: "Acceptance Test"
 on:
-  pull_request:
-    types: [labeled]
+  push:
+    branches:
+      - "dev/amauat-issue-31"
 jobs:
   test:
-    if: github.event.label.name == 'AMAUAT'
     name: "Test ${{ matrix.tag }} on ${{ matrix.browser }}"
     runs-on: "ubuntu-18.04"
+    continue-on-error: true
     strategy:
       matrix:
         tag:
