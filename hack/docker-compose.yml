@@ -1,4 +1,4 @@
----
+
 version: "2.1"
 
 volumes:
@@ -111,9 +111,9 @@ services:
     volumes:
       - "../:/src"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
-    links:
-      - "mysql"
-      - "gearmand"
+    depends_on:
+      - mysql
+      - gearmand
 
   archivematica-mcp-client:
     build:
@@ -144,13 +144,13 @@ services:
     volumes:
       - "../:/src"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
-    links:
-      - "fits"
-      - "clamavd"
-      - "mysql"
-      - "gearmand"
-      - "elasticsearch"
-      - "archivematica-storage-service"
+    depends_on:
+      - fits
+      - clamavd
+      - mysql
+      - gearmand
+      - elasticsearch
+      - archivematica-storage-service
 
   archivematica-dashboard:
     build:
@@ -175,11 +175,11 @@ services:
     volumes:
       - "../:/src"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
-    links:
-      - "mysql"
-      - "gearmand"
-      - "elasticsearch"
-      - "archivematica-storage-service"
+    depends_on:
+      - mysql
+      - gearmand
+      - elasticsearch
+      - archivematica-storage-service
 
   archivematica-storage-service:
     build:
@@ -199,5 +199,5 @@ services:
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
       - "archivematica_storage_service_staging_data:/var/archivematica/storage_service:rw"
       - "archivematica_storage_service_location_data:/home:rw"
-    links:
-      - "mysql"
+    depends_on:
+      - mysql
