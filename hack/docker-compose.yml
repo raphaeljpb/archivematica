@@ -99,6 +99,7 @@ services:
     ports:
       - "62080:80"
       - "62081:8000"
+    restart: unless-stopped
 
   archivematica-mcp-server:
     build:
@@ -125,6 +126,7 @@ services:
     depends_on:
       - mysql
       - gearmand
+    restart: unless-stopped
 
   archivematica-mcp-client:
     build:
@@ -164,6 +166,7 @@ services:
       - gearmand
       - elasticsearch
       - archivematica-storage-service
+    restart: unless-stopped
 
   archivematica-dashboard:
     build:
@@ -195,6 +198,7 @@ services:
       - gearmand
       - elasticsearch
       - archivematica-storage-service
+    restart: unless-stopped
 
   archivematica-storage-service:
     build:
@@ -218,3 +222,4 @@ services:
       - "archivematica_storage_service_location_data:/home:rw"
     depends_on:
       - mysql
+    restart: unless-stopped
