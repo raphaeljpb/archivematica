@@ -75,7 +75,7 @@ from create_mets_dataverse_v2 import (
 )
 from custom_handlers import get_script_logger
 import namespaces as ns
-from sanitize_names import sanitize_name
+from change_names import change_name
 
 from bagit import Bag, BagError
 
@@ -707,8 +707,9 @@ def createDigiprovMD(fileUUID, state):
         xmlData = etree.SubElement(mdWrap, ns.metsBNS + "xmlData")
         xmlData.append(createEvent(event_record))
 
-    agents = Agent.objects.filter(event__file_uuid_id=fileUUID).distinct()
-    for agent in agents:
+    for agent in Agent.objects.extend_queryset_with_preservation_system(
+        Agent.objects.filter(event__file_uuid_id=fileUUID).distinct()
+    ):
         state.globalDigiprovMDCounter += 1
         digiprovMD = etree.Element(
             ns.metsBNS + "digiprovMD",
@@ -768,7 +769,9 @@ def createEvent(event_record):
     ).text = escape(event_record.event_outcome_detail)
 
     # linkingAgentIdentifier
-    for agent in event_record.agents.all():
+    for agent in Agent.objects.extend_queryset_with_preservation_system(
+        event_record.agents.all()
+    ):
         linkingAgentIdentifier = etree.SubElement(
             event, ns.premisBNS + "linkingAgentIdentifier"
         )
@@ -819,7 +822,7 @@ def getAMDSec(
 
     techMD contains a PREMIS:OBJECT, see createTechMD
     rightsMD contain PREMIS:RIGHTS, see archivematicaGetRights, archivematicaCreateMETSRightsDspaceMDRef or getTrimFileAmdSec
-    digiprovMD contain PREMIS:EVENT and PREMIS:AGENT, see createDigiprovMD and createDigiprovMDAgents
+    digiprovMD contain PREMIS:EVENT and PREMIS:AGENT, see createDigiprovMD
 
     :param fileUUID: UUID of the file
     :param filePath: For archivematicaCreateMETSRightsDspaceMDRef
@@ -880,7 +883,7 @@ def _fixup_path_input_by_user(job, path):
     """Fix-up paths submitted by a user, e.g. in custom structmap examples so
     that they don't have to anticipate the Archivematica normalization process.
     """
-    return os.path.join("", *[sanitize_name(name) for name in path.split(os.path.sep)])
+    return os.path.join("", *[change_name(name) for name in path.split(os.path.sep)])
 
 
 def include_custom_structmap(

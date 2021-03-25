@@ -29,6 +29,7 @@ from main.models import RightsStatement
 from . import TempDirMixin
 
 import namespaces as ns
+from version import get_preservation_system_identifier
 
 try:
     from pathlib import Path
@@ -631,7 +632,7 @@ class TestCreateDigiprovMD(TestCase):
         assert ret[3][0].attrib["MDTYPE"] == "PREMIS:EVENT"
         assert (
             ret[3].find(".//{http://www.loc.gov/premis/v3}eventType").text
-            == "name cleanup"
+            == "filename change"
         )
         assert (
             len(
@@ -675,7 +676,7 @@ class TestCreateDigiprovMD(TestCase):
         )
         assert (
             ret[6].find(".//{http://www.loc.gov/premis/v3}agentIdentifierValue").text
-            == "Archivematica-1.4.0"
+            == get_preservation_system_identifier()
         )
         assert (
             ret[6].find(".//{http://www.loc.gov/premis/v3}agentName").text
@@ -796,7 +797,7 @@ class TestCustomStructMap(TempDirMixin, TestCase):
             )
 
     def _fixup_fileid_state(self):
-        """For items on-disk we have to mimic the filename cleanup process."""
+        """For items on-disk we have to mimic the filename change process."""
         for key, _ in dict(self.state.fileNameToFileID).items():
             self.state.fileNameToFileID[
                 create_mets_v2._fixup_path_input_by_user(Job("stub", "stub", []), key)
