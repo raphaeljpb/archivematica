@@ -31,11 +31,9 @@ import subprocess
 import sys
 from uuid import UUID
 
-from django.core.management import call_command
-
 import pytest
 
-from main.models import File, Event
+from main.models import Transfer, File, Event, User
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.abspath(os.path.join(THIS_DIR, "../lib/clientScripts")))
@@ -56,6 +54,41 @@ class TestHashsum(object):
     assert_exception_string = "Hashsum exception string returned is incorrect"
     assert_return_value = "Hashsum comparison returned something other than 1: {}"
 
+    @pytest.fixture()
+    def user(self, db):
+        return User.objects.create(
+            id=1,
+            username="kmindelan",
+            first_name="Keladry",
+            last_name="Mindelan",
+            is_active=True,
+            is_superuser=True,
+            is_staff=True,
+            email="keladry@mindelan.com",
+        )
+
+    @pytest.fixture
+    def transfer(self, db, user):
+        transfer = Transfer.objects.create(
+            uuid="e95ab50f-9c84-45d5-a3ca-1b0b3f58d9b6",
+            type="Standard",
+            currentlocation="%sharedPath%currentlyProcessing/ユニコード-e95ab50f-9c84-45d5-a3ca-1b0b3f58d9b6/",
+        )
+        transfer.update_active_agent(user_id=user.id)
+        File.objects.create(
+            uuid="8a1f0b59-cf94-47ef-8078-647b77c8a147",
+            checksumtype="sha256",
+            transfer=transfer,
+            filegrpuse="original",
+            checksum="f78615cd834f7fb84832177e73f13e3479f5b5b22ae7a9506c7fa0a14fd9df9e",
+            enteredsystem="2017-01-04T19:35:20Z",
+            modificationtime="2017-01-04T19:35:20Z",
+            originallocation="%transferDirectory%objects/has space/lion.svg",
+            currentlocation="%transferDirectory%objects/has space/lion.svg",
+            size=18324,
+        )
+        return transfer
+
     @staticmethod
     def setup_hashsum(path, job):
         """Return a hashsum instance to calling functions and perform any
@@ -67,11 +100,9 @@ class TestHashsum(object):
         """Test that we don't return a Hashsum object if there isn't a tool
         configured to work with the file path provided.
         """
-        with pytest.raises(
-            NoHashCommandAvailable,
-            message="Expecting NoHashCommandAvailable for invalid checksum type",
-        ):
+        with pytest.raises(NoHashCommandAvailable):
             Hashsum("checksum.invalid_hash")
+            pytest.fail("Expecting NoHashCommandAvailable for invalid checksum type")
 
     @pytest.mark.parametrize(
         "fixture",
@@ -95,11 +126,11 @@ class TestHashsum(object):
                 Hashsum(fixture[0]), Hashsum
             ), "Hashsum object not instantiated correctly"
         else:
-            with pytest.raises(
-                NoHashCommandAvailable,
-                message="Expecting NoHashCommandAvailable for a filename we shouldn't be able to handle",
-            ):
+            with pytest.raises(NoHashCommandAvailable):
                 Hashsum(fixture[0])
+                pytest.fail(
+                    "Expecting NoHashCommandAvailable for a filename we shouldn't be able to handle"
+                )
 
     def test_provenance_string(self, mocker):
         """Test to ensure that the string output to the PREMIS event for this
@@ -274,28 +305,8 @@ class TestHashsum(object):
             Hashsum._decode(version_string)[0] == "sha256sum (GNU coreutils) 8.28"
         ), "Invalid version string decoded by Hashsum"
 
-    @staticmethod
-    @pytest.fixture(scope="class")
-    def django_db_setup(django_db_blocker):
-        """Load the various database fixtures required for our tests."""
-        fixtures_dir = "microservice_agents"
-        # hashsum_agents and hashsum_unitvars work in concert to return the
-        # Archivematica current user to the result set.
-        fixture_files = [
-            "transfer.json",
-            "files-transfer-unicode.json",
-            os.path.join(fixtures_dir, "microservice_agents.json"),
-            os.path.join(fixtures_dir, "microservice_unitvars.json"),
-        ]
-        fixtures = []
-        for fixture in fixture_files:
-            fixtures.append(os.path.join(THIS_DIR, "fixtures", fixture))
-        with django_db_blocker.unblock():
-            for fixture in fixtures:
-                call_command("loaddata", fixture)
-
     @pytest.mark.django_db
-    def test_write_premis_event_to_db(self):
+    def test_write_premis_event_to_db(self, transfer):
         """Test that the microservice job connects to the database as
         anticipated, writes its data, and that data can then be retrieved.
         """
@@ -305,24 +316,22 @@ class TestHashsum(object):
         event_outcome = "pass"
         # Values we will write.
         detail = "suma de verificación validada: OK"
-        number_of_expected_agents = 3
+        number_of_expected_agents = 2
         # Agent values we can test against. Three agents, which should be,
         # preservation system, repository, and user.
-        identifier_values = ["Archivematica-1.10", "エズメレルダ", "Atefactual Systems Inc."]
+        identifier_values = ["1", "ORG"]
 
         identifier_types = [
-            "preservation system",
             "repository code",
             "Archivematica user pk",
         ]
 
         agent_names = [
-            "Archivematica",
-            "Artefactual Systems Corporate Archive",
-            'username="\u30a8\u30ba\u30e1\u30ec\u30eb\u30c0", first_name="\u3053\u3093\u306b\u3061\u306f", last_name="\u4e16\u754c"',
+            "Your Organization Name Here",
+            'username="kmindelan", first_name="Keladry", last_name="Mindelan"',
         ]
 
-        agent_types = ["software", "organization", "Archivematica user"]
+        agent_types = ["organization", "Archivematica user"]
         package_uuid = "e95ab50f-9c84-45d5-a3ca-1b0b3f58d9b6"
         kwargs = {"removedtime__isnull": True, "transfer_id": package_uuid}
         file_objs_queryset = File.objects.filter(**kwargs)
@@ -387,17 +396,17 @@ class TestHashsum(object):
         ), "No all algorithms written to PREMIS events"
 
     @pytest.mark.django_db
-    def test_get_file_obj_queryset(self):
+    def test_get_file_obj_queryset(self, transfer):
         """Test the retrieval and failure of the queryset used for creating
         events for all the file objects associated with the transfer checksums.
         """
         package_uuid = "e95ab50f-9c84-45d5-a3ca-1b0b3f58d9b6"
         assert get_file_queryset(package_uuid)
         invalid_package_uuid = "badf00d1-9c84-45d5-a3ca-1b0b3f58d9b6"
-        with pytest.raises(
-            PREMISFailure,
-            message="Unable to find the transfer objects for the SIP: '{}' in the database".format(
-                invalid_package_uuid
-            ),
-        ):
+        with pytest.raises(PREMISFailure):
             get_file_queryset(invalid_package_uuid)
+            pytest.fail(
+                "Unable to find the transfer objects for the SIP: '{}' in the database".format(
+                    invalid_package_uuid
+                )
+            )

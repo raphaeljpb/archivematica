@@ -18,3 +18,7 @@ src/dashboard/src/media/js/build
 **/*.log
 **/node_modules
 **/Thumbs.db
+.git
+.gitignore
+.env
+hack/submodules/archivematica-sampledata

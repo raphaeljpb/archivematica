@@ -1,5 +1,5 @@
 
-version: "2.1"
+version: "2.4"
 
 volumes:
 
@@ -21,12 +21,16 @@ volumes:
   archivematica_storage_service_location_data:
     external:
       name: "ss-location-data"
+  dip_uploads_data:
+    external:
+      name: "dip-upload-data"
 
 services:
 
   mysql:
     image: "percona:5.6"
     user: "mysql"
+    container_name: archivematica_percona
     command: "--character-set-server=utf8 --collation-server=utf8_general_ci"
     environment:
       MYSQL_ROOT_PASSWORD: "12345"
@@ -36,11 +40,18 @@ services:
     volumes:
       - "./etc/mysql/tuning.cnf:/etc/my.cnf.d/tuning.cnf:ro"
       - "mysql_data:/var/lib/mysql"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin -h 'localhost' -u root -p12345 ping --silent"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 30s
     ports:
       - "127.0.0.1:62001:3306"
 
   elasticsearch:
     image: "docker.elastic.co/elasticsearch/elasticsearch:6.5.4"
+    container_name: archivematica_elasticsearch
     environment:
       - "cluster.name=am-cluster"
       - "node.name=am-node"
@@ -53,11 +64,18 @@ services:
         hard: -1
     volumes:
       - "elasticsearch_data:/usr/share/elasticsearch/data"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --fail localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
     ports:
       - "127.0.0.1:62002:9200"
 
   gearmand:
     image: "artefactual/gearmand:1.1.18-alpine"
+    container_name: archivematica_gearmand
     command: "--queue-type=builtin"
     user: "gearman"
     ports:
@@ -65,6 +83,7 @@ services:
 
   fits:
     image: "artefactual/fits-ngserver:0.8.4"
+    container_name: archivematica_fits
     ports:
       - "127.0.0.1:62005:2113"
     volumes:
@@ -72,6 +91,7 @@ services:
 
   clamavd:
     image: "artefactual/clamav:latest"
+    container_name: archivematica_clamavd
     environment:
       CLAMAV_MAX_FILE_SIZE: "42"
       CLAMAV_MAX_SCAN_SIZE: "42"
@@ -83,6 +103,7 @@ services:
 
   nginx:
     image: "nginx:stable-alpine"
+    container_name: archivematica_nginx
     volumes:
       - "./etc/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"
       - "./etc/nginx/conf.d/archivematica.conf:/etc/nginx/conf.d/archivematica.conf:ro"
@@ -90,13 +111,18 @@ services:
     ports:
       - "62080:80"
       - "62081:8000"
+    depends_on:
+      - archivematica-dashboard
+    restart: unless-stopped
 
   archivematica-mcp-server:
+    image: ${DOCKER_REGISTRY:?registry}/archivematica-mcp-server:latest
     build:
       context: "../"
       dockerfile: "hack/Dockerfile"
       args:
         TARGET: "archivematica-mcp-server"
+    container_name: archivematica-mcp-server
     environment:
       DJANGO_SECRET_KEY: "12345"
       DJANGO_SETTINGS_MODULE: "settings.common"
@@ -111,16 +137,22 @@ services:
     volumes:
       - "../:/src"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
+      - "dip_uploads_data:/var/archivematica/dip-uploads:rw"
     depends_on:
-      - mysql
-      - gearmand
+      mysql:
+        condition: service_healthy
+      gearmand:
+        condition: service_started
+    restart: unless-stopped
 
   archivematica-mcp-client:
+    image: ${DOCKER_REGISTRY:?registry}/archivematica-mcp-client:latest
     build:
       context: "../"
       dockerfile: "hack/Dockerfile"
       args:
         TARGET: "archivematica-mcp-client"
+    container_name: archivematica-mcp-client
     environment:
       DJANGO_SECRET_KEY: "12345"
       DJANGO_SETTINGS_MODULE: "settings.common"
@@ -144,20 +176,28 @@ services:
     volumes:
       - "../:/src"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
+      - "dip_uploads_data:/var/archivematica/dip-uploads:rw"
     depends_on:
-      - fits
-      - clamavd
-      - mysql
-      - gearmand
-      - elasticsearch
-      - archivematica-storage-service
+      fits:
+        condition: service_started
+      clamavd:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+      gearmand:
+        condition: service_started
+      archivematica-storage-service:
+        condition: service_started
+    restart: unless-stopped
 
   archivematica-dashboard:
+    image: ${DOCKER_REGISTRY:?registry}/archivematica-dashboard:latest
     build:
       context: "../"
       dockerfile: "hack/Dockerfile"
       args:
         TARGET: "archivematica-dashboard"
+    container_name: archivematica-dashboard
     environment:
       FORWARDED_ALLOW_IPS: "*"
       AM_GUNICORN_ACCESSLOG: "/dev/null"
@@ -175,15 +215,23 @@ services:
     volumes:
       - "../:/src"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
+      - "dip_uploads_data:/var/archivematica/dip-uploads:rw"
     depends_on:
-      - mysql
-      - gearmand
-      - elasticsearch
-      - archivematica-storage-service
+      mysql:
+        condition: service_healthy
+      gearmand:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+      archivematica-storage-service:
+        condition: service_started
+    restart: unless-stopped
 
   archivematica-storage-service:
+    image: ${DOCKER_REGISTRY:?registry}/archivematica-storage-service:latest
     build:
       context: "submodules/archivematica-storage-service"
+    container_name: archivematica-storage-service
     environment:
       FORWARDED_ALLOW_IPS: "*"
       SS_GUNICORN_ACCESSLOG: "/dev/null"
@@ -198,6 +246,9 @@ services:
       - "./submodules/archivematica-sampledata/:/home/archivematica/archivematica-sampledata/:ro"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
       - "archivematica_storage_service_staging_data:/var/archivematica/storage_service:rw"
+      - "dip_uploads_data:/var/archivematica/dip-uploads:rw"
       - "archivematica_storage_service_location_data:/home:rw"
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped

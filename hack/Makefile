@@ -17,6 +17,10 @@ SRCDIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../src)
 NULL :=
 SPACE := $(NULL) $(NULL)
 
+define compose_all
+	docker-compose -f docker-compose.yml -f docker-compose.acceptance-tests.yml -f docker-compose.pmm.yml $(1)
+endef
+
 define compose_amauat
 	docker-compose -f docker-compose.yml -f docker-compose.acceptance-tests.yml $(1)
 endef
@@ -184,7 +188,7 @@ compile-requirements-ss:  ## Run pip-compile for Storage Service
 		--no-deps \
 		--user $(CALLER_UID):$(CALLER_GID) \
 		--entrypoint bash archivematica-storage-service \
-			-c "make clean && make all"
+			-c "make pip-compile"
 
 db:  ## Connect to the MySQL server using the CLI.
 	docker-compose exec mysql mysql -hlocalhost -uroot -p12345
@@ -219,28 +223,43 @@ test-build:  ## Build archivematica-tests image.
 		--build-arg TARGET=archivematica-tests \
 			../
 
-__TOXENVS_MCPSERVER := mcpserver
+__TOXENVS_MCPSERVER := py27-mcpserver
 test-mcp-server: start-mysql  ## Run MCPServer tests.
 	$(call run_toxenvs,$(__TOXENVS_MCPSERVER))
 
-__TOXENVS_MCPCLIENT = mcpclient mcpclient-ensure-no-mutable-globals
+test-mcp-server-py36: start-mysql  ## Run MCPServer tests in Python 3.6.
+	$(call run_toxenvs,py36-mcpserver)
+
+__TOXENVS_MCPCLIENT = py27-mcpclient mcpclient-ensure-no-mutable-globals
 test-mcp-client: start-mysql  ## Run MCPClient tests.
 	$(call run_toxenvs,$(__TOXENVS_MCPCLIENT))
 
-__TOXENVS_DASHBOARD = dashboard
+test-mcp-client-py36: start-mysql  ## Run MCPClient tests in Python 3.6.
+	$(call run_toxenvs,py36-mcpclient)
+
+__TOXENVS_DASHBOARD = py27-dashboard
 test-dashboard: start-mysql  ## Run Dashboard tests.
 	$(call run_toxenvs,$(__TOXENVS_DASHBOARD))
 
-__TOXENVS_STORAGE_SERVICE = storage-service
+test-dashboard-py36: start-mysql  ## Run Dashboard tests in Python 3.6.
+	$(call run_toxenvs,py36-dashboard)
+
+__TOXENVS_STORAGE_SERVICE = py27-storage-service
 test-storage-service: start-mysql  ## Run Storage Service tests.
 	$(call run_toxenvs,$(__TOXENVS_STORAGE_SERVICE))
+
+test-storage-service-py36: start-mysql  ## Run Storage Service tests in Python 3.6.
+	$(call run_toxenvs,py36-storage-service)
 
 test-storage-service-integration:  ## Run Storage Service unit and integration tests using MySQL and MinIO.
 	$(CURDIR)/submodules/archivematica-storage-service/integration/run.sh
 
-__TOXENVS_ARCHIVEMATICA_COMMON = archivematica-common
+__TOXENVS_ARCHIVEMATICA_COMMON = py27-archivematica-common
 test-archivematica-common: start-mysql  ## Run Archivematica Common tests.
 	$(call run_toxenvs,$(__TOXENVS_ARCHIVEMATICA_COMMON))
+
+test-archivematica-common-py36: start-mysql  ## Run Archivematica Common tests in Python 3.6.
+	$(call run_toxenvs,py36-archivematica-common)
 
 __TOXENVS_CHECKFORMIGRATIONS = checkformigrations-dashboard checkformigrations-storage-service
 test-checkformigrations: start-mysql  ## Check there are no pending migrations.
@@ -334,6 +353,9 @@ test-frontend:  ## Run Dashboard JS tests.
 		--rm \
 		--volume "$(SRCDIR)/dashboard/frontend:/src/src/dashboard/frontend" \
 			archivematica-dashboard-testing
+
+stop:  # Stop all containers.
+	$(call compose_all, stop)
 
 help:  ## Print this help message.
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
