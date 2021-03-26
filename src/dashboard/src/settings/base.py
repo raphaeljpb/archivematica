@@ -180,7 +180,7 @@ prometheus_enabled = False
 audit_log_middleware = False
 polling_interval = 10
 site_url =
-time_zone = UTC
+time_zone = America/Recife
 
 [client]
 user = archivematica
