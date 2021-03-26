@@ -135,7 +135,6 @@ services:
       ARCHIVEMATICA_MCPSERVER_MCPSERVER_PROMETHEUS_BIND_PORT: "7999"
       ARCHIVEMATICA_MCPSERVER_MCPSERVER_PROMETHEUS_BIND_ADDRESS: "0.0.0.0"
     volumes:
-      - "../:/src"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
       - "dip_uploads_data:/var/archivematica/dip-uploads:rw"
     depends_on:
@@ -174,7 +173,6 @@ services:
       ARCHIVEMATICA_MCPCLIENT_MCPCLIENT_PROMETHEUS_BIND_PORT: "7999"
       ARCHIVEMATICA_MCPCLIENT_MCPCLIENT_PROMETHEUS_BIND_ADDRESS: "0.0.0.0"
     volumes:
-      - "../:/src"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
       - "dip_uploads_data:/var/archivematica/dip-uploads:rw"
     depends_on:
@@ -213,7 +211,6 @@ services:
       ARCHIVEMATICA_DASHBOARD_CLIENT_DATABASE: "MCP"
       ARCHIVEMATICA_DASHBOARD_SEARCH_ENABLED: "${AM_SEARCH_ENABLED:-true}"
     volumes:
-      - "../:/src"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
       - "dip_uploads_data:/var/archivematica/dip-uploads:rw"
     depends_on:
@@ -243,7 +240,6 @@ services:
       SS_PROMETHEUS_ENABLED: "true"
       TIME_ZONE: "America/Recife"
     volumes:
-      - "./submodules/archivematica-storage-service/:/src/"
       - "./submodules/archivematica-sampledata/:/home/archivematica/archivematica-sampledata/:ro"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
       - "archivematica_storage_service_staging_data:/var/archivematica/storage_service:rw"
