@@ -144,7 +144,7 @@ storage_service_client_timeout = 86400
 storage_service_client_quick_timeout = 5
 prometheus_bind_address =
 prometheus_bind_port =
-time_zone = UTC
+time_zone = America/Recife
 
 [client]
 user = archivematica
