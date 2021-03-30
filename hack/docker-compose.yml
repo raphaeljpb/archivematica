@@ -30,7 +30,7 @@ services:
   mysql:
     image: "percona:5.6"
     user: "mysql"
-    container_name: archivematica-percona
+    container_name: archivematica-mysql
     command: "--character-set-server=utf8 --collation-server=utf8_general_ci"
     environment:
       MYSQL_ROOT_PASSWORD: "12345"
