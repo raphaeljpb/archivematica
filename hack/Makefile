@@ -64,17 +64,17 @@ define drop_db
 endef
 
 create-volumes:  ## Create external data volumes.
-	mkdir -p ${AM_PIPELINE_DATA}
+#	mkdir -p ${AM_PIPELINE_DATA}
 	docker volume create \
-		--opt type=none \
-		--opt o=bind \
-		--opt device=$(AM_PIPELINE_DATA) \
+#		--opt type=none \
+#		--opt o=bind \
+#		--opt device=$(AM_PIPELINE_DATA) \
 			am-pipeline-data
-	mkdir -p ${SS_LOCATION_DATA}
+#	mkdir -p ${SS_LOCATION_DATA}
 	docker volume create \
-		--opt type=none \
-		--opt o=bind \
-		--opt device=$(SS_LOCATION_DATA) \
+#		--opt type=none \
+#		--opt o=bind \
+#		--opt device=$(SS_LOCATION_DATA) \
 			ss-location-data
 
 build:  # Build Compose services.
