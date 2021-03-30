@@ -30,7 +30,7 @@ services:
   mysql:
     image: "percona:5.6"
     user: "mysql"
-    container_name: archivematica_percona
+    container_name: archivematica-percona
     command: "--character-set-server=utf8 --collation-server=utf8_general_ci"
     environment:
       MYSQL_ROOT_PASSWORD: "12345"
@@ -51,7 +51,7 @@ services:
 
   elasticsearch:
     image: "docker.elastic.co/elasticsearch/elasticsearch:6.5.4"
-    container_name: archivematica_elasticsearch
+    container_name: archivematica-elasticsearch
     environment:
       - "cluster.name=am-cluster"
       - "node.name=am-node"
@@ -75,7 +75,7 @@ services:
 
   gearmand:
     image: "artefactual/gearmand:1.1.18-alpine"
-    container_name: archivematica_gearmand
+    container_name: archivematica-gearmand
     command: "--queue-type=builtin"
     user: "gearman"
     ports:
@@ -91,7 +91,7 @@ services:
 
   clamavd:
     image: "artefactual/clamav:latest"
-    container_name: archivematica_clamavd
+    container_name: archivematica-clamavd
     environment:
       CLAMAV_MAX_FILE_SIZE: "42"
       CLAMAV_MAX_SCAN_SIZE: "42"
@@ -103,7 +103,7 @@ services:
 
   nginx:
     image: "nginx:stable-alpine"
-    container_name: archivematica_nginx
+    container_name: archivematica-nginx
     volumes:
       - "./etc/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"
       - "./etc/nginx/conf.d/archivematica.conf:/etc/nginx/conf.d/archivematica.conf:ro"
@@ -240,11 +240,10 @@ services:
       SS_PROMETHEUS_ENABLED: "true"
       TIME_ZONE: "America/Recife"
     volumes:
-      - "./submodules/archivematica-sampledata/:/home/archivematica/archivematica-sampledata/:ro"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
       - "archivematica_storage_service_staging_data:/var/archivematica/storage_service:rw"
       - "dip_uploads_data:/var/archivematica/dip-uploads:rw"
-      - "archivematica_storage_service_location_data:/home:rw"
+      - "archivematica_storage_service_location_data:/home/archivematica/nuvem:rw"
     depends_on:
       mysql:
         condition: service_healthy
