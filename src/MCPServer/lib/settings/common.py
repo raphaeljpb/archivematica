@@ -16,13 +16,14 @@
 # along with Archivematica.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import division
 
-import StringIO
 import json
 import logging
 import logging.config
 import math
 import multiprocessing
 import os
+
+from six import StringIO
 
 from appconfig import Config, process_search_enabled, process_watched_directory_interval
 import email_settings
@@ -114,6 +115,11 @@ CONFIG_MAPPING = {
         "option": "prometheus_bind_port",
         "type": "string",
     },
+    "workflow_file": {
+        "section": "MCPServer",
+        "option": "workflow_file",
+        "type": "string",
+    },
     "time_zone": {"section": "MCPServer", "option": "time_zone", "type": "string"},
     # [client]
     "db_engine": {"section": "client", "option": "engine", "type": "string"},
@@ -145,6 +151,7 @@ storage_service_client_quick_timeout = 5
 prometheus_bind_address =
 prometheus_bind_port =
 time_zone = America/Recife
+workflow_file =
 
 [client]
 user = archivematica
@@ -173,7 +180,7 @@ timeout = 300
 
 
 config = Config(env_prefix="ARCHIVEMATICA_MCPSERVER", attrs=CONFIG_MAPPING)
-config.read_defaults(StringIO.StringIO(CONFIG_DEFAULTS))
+config.read_defaults(StringIO(CONFIG_DEFAULTS))
 config.read_files(
     [
         "/etc/archivematica/archivematicaCommon/dbsettings",
@@ -280,6 +287,8 @@ except ValueError:
     PROMETHEUS_ENABLED = False
 else:
     PROMETHEUS_ENABLED = True
+
+WORKFLOW_FILE = config.get("workflow_file")
 
 # Apply email settings
 globals().update(email_settings.get_settings(config))

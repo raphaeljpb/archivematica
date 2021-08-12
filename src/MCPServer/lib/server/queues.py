@@ -7,11 +7,11 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import functools
 import logging
-import Queue
 import threading
 
 from django.conf import settings
 from django.utils import six
+from six.moves import queue as Queue
 
 from server import metrics
 from server.jobs import DecisionJob
@@ -210,6 +210,9 @@ class PackageQueue(object):
                 link_id,
             )
             return
+
+        # TODO: can we be more specific? E.g. failed or completed.
+        package.mark_as_done()
 
         self.deactivate_package(package)
         self.queue_next_job()

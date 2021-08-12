@@ -2,12 +2,10 @@
 from __future__ import print_function
 
 import os
-import sys
 
 from django.test import TestCase
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.abspath(os.path.join(THIS_DIR, "../lib/clientScripts")))
 
 from main import models
 
@@ -50,14 +48,14 @@ class TestRightsImportFromCsv(TestRightsImportFromCsvBase):
         rows_processed = parser.parse()
 
         # Test rows processed and model intance counts
-        assert rows_processed == 8
+        assert rows_processed == 9
         assert (
-            models.RightsStatement.objects.count() == 7
+            models.RightsStatement.objects.count() == 8
         )  # One row in fixture CSV skipped due to duplicate basis/act combination
         assert models.RightsStatementLicense.objects.count() == 1
         assert models.RightsStatementCopyright.objects.count() == 2
         assert models.RightsStatementStatuteInformation.objects.count() == 1
-        assert models.RightsStatementOtherRightsInformation.objects.count() == 3
+        assert models.RightsStatementOtherRightsInformation.objects.count() == 4
         assert (
             models.RightsStatementCopyrightDocumentationIdentifier.objects.count() == 2
         )

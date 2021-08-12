@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 # This file is part of Archivematica.
 #
@@ -27,6 +27,7 @@ import uuid
 import errno
 
 import django
+import six
 
 django.setup()
 from django.db import transaction
@@ -73,9 +74,7 @@ def clamav_version_parts(ver):
     return None, None
 
 
-class ScannerBase(object):
-    __metaclass__ = abc.ABCMeta
-
+class ScannerBase(six.with_metaclass(abc.ABCMeta, object)):
     @abc.abstractmethod
     def scan(self, path):
         """Scan a file and return a tuple of three elements reporting the
@@ -182,7 +181,7 @@ class ClamdScanner(ScannerBase):
 
     def pass_by_stream(self, path):
         logger.info("File contents being streamed to Clamdscan.")
-        return self.client.instream(open(path))
+        return self.client.instream(open(path, "rb"))
 
 
 class ClamScanner(ScannerBase):

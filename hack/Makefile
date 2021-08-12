@@ -230,12 +230,12 @@ test-mcp-server: start-mysql  ## Run MCPServer tests.
 test-mcp-server-py36: start-mysql  ## Run MCPServer tests in Python 3.6.
 	$(call run_toxenvs,py36-mcpserver)
 
-__TOXENVS_MCPCLIENT = py27-mcpclient mcpclient-ensure-no-mutable-globals
+__TOXENVS_MCPCLIENT = py27-mcpclient py27-mcpclient-ensure-no-mutable-globals
 test-mcp-client: start-mysql  ## Run MCPClient tests.
 	$(call run_toxenvs,$(__TOXENVS_MCPCLIENT))
 
 test-mcp-client-py36: start-mysql  ## Run MCPClient tests in Python 3.6.
-	$(call run_toxenvs,py36-mcpclient)
+	$(call run_toxenvs,py36-mcpclient py36-mcpclient-ensure-no-mutable-globals)
 
 __TOXENVS_DASHBOARD = py27-dashboard
 test-dashboard: start-mysql  ## Run Dashboard tests.
@@ -261,11 +261,16 @@ test-archivematica-common: start-mysql  ## Run Archivematica Common tests.
 test-archivematica-common-py36: start-mysql  ## Run Archivematica Common tests in Python 3.6.
 	$(call run_toxenvs,py36-archivematica-common)
 
-__TOXENVS_CHECKFORMIGRATIONS = checkformigrations-dashboard checkformigrations-storage-service
-test-checkformigrations: start-mysql  ## Check there are no pending migrations.
+__TOXENVS_MIGRATIONS = py27-migrations-dashboard migrations-storage-service
+test-migrations: start-mysql  ## Check there are no pending migrations.
 	$(call create_db,DASHBOARDTEST)
 	$(call create_db,SSTEST)
-	$(call run_toxenvs,$(__TOXENVS_CHECKFORMIGRATIONS))
+	$(call run_toxenvs,$(__TOXENVS_MIGRATIONS))
+
+test-migrations-py36: start-mysql  ## Check there are no pending migrations in Python 3.6.
+	$(call create_db,DASHBOARDTEST)
+	$(call create_db,SSTEST)
+	$(call run_toxenvs,py36-migrations-dashboard)
 
 __TOXENVS_LINTING = linting
 test-linting:  ## Check linting.
@@ -317,7 +322,7 @@ test-at-behave: test-at-build  ## AMAUAT: run behave, default is `make test-at-b
 	$(call compose_amauat, \
 		run --rm -e HEADLESS=1 --no-deps archivematica-acceptance-tests /usr/local/bin/behave \
 			--no-capture --no-capture-stderr --no-logcapture \
-			--tags=$(TAGS) --no-skipped -v --stop \
+			$(subst $(SPACE), --tags=,$(SPACE)$(TAGS)) --no-skipped -v --stop \
 			-D driver_name=$(BROWSER) \
 			-D ssh_accessible=no \
 			-D am_url=http://nginx/ \

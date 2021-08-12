@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # This file is part of Archivematica.
@@ -18,7 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Archivematica.  If not, see <http://www.gnu.org/licenses/>.
 
-import cPickle
+import six.moves.cPickle
 import getpass
 import optparse
 import os
@@ -89,10 +89,10 @@ def start(job, data):
             .replace("%sharedPath%", "/var/archivematica/sharedDirectory/")
         )
     else:
-        return error(job, "Directory not found: %s" % directory)
+        return error(job, "Cannot determine directory")
 
     # Check if exists
-    if os.path.exists(directory) is False:
+    if not os.path.exists(directory):
         log("Directory not found: %s" % directory)
 
         # Trying with uploadedDIPs
@@ -110,13 +110,15 @@ def start(job, data):
         # Look for access system ID
         transfers = models.Transfer.objects.filter(file__sip_id=data.uuid).distinct()
         if transfers.count() == 1:
-            access.target = cPickle.dumps({"target": transfers[0].access_system_id})
+            access.target = six.moves.cPickle.dumps(
+                {"target": transfers[0].access_system_id}, protocol=0
+            )
         access.save()
 
     # The target columns contents a serialized Python dictionary
     # - target is the permalink string
     try:
-        target = cPickle.loads(str(access.target))
+        target = six.moves.cPickle.loads(access.target.encode("utf8"))
         log("Target: %s" % (target["target"]))
     except:
         return error(job, "No target was selected")

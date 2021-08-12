@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 import argparse
 import csv
 
@@ -59,7 +59,7 @@ def parse_archivesspaceids_csv(files):
     file_info = {}
     # SIP is last, so takes priority
     for csv_path in files:
-        with open(csv_path, "rbU") as f:
+        with open(csv_path, "rU") as f:
             reader = csv.reader(f)
             for row in reader:
                 filename = row[0]

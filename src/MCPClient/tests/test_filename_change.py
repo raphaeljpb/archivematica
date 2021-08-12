@@ -3,7 +3,6 @@ from __future__ import print_function, unicode_literals
 
 import os
 import shutil
-import sys
 import uuid
 
 import pytest
@@ -15,9 +14,9 @@ from job import Job
 from main.models import Directory, Event, File, Transfer, SIP, User
 
 from . import TempDirMixin
+from six.moves import range
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.abspath(os.path.join(THIS_DIR, "../lib/clientScripts")))
 
 import change_names
 import change_object_names
@@ -68,7 +67,7 @@ def transfer_dir_obj(db, transfer, tmp_path, subdir_path):
     dir_obj_path = "".join(
         [
             transfer.currentlocation,
-            six.text_type(subdir_path.relative_to(tmp_path).as_posix(), "utf-8"),
+            six.ensure_text(subdir_path.relative_to(tmp_path).as_posix()),
             os.path.sep,
         ]
     )
@@ -87,7 +86,7 @@ def sip_dir_obj(db, sip, tmp_path, subdir_path):
     dir_obj_path = "".join(
         [
             sip.currentpath,
-            six.text_type(subdir_path.relative_to(tmp_path).as_posix(), "utf-8"),
+            six.ensure_text(subdir_path.relative_to(tmp_path).as_posix()),
             os.path.sep,
         ]
     )
@@ -108,7 +107,7 @@ def sip_file_obj(db, sip, tmp_path, subdir_path):
     relative_path = "".join(
         [
             sip.currentpath,
-            six.text_type(file_path.relative_to(tmp_path).as_posix(), "utf-8"),
+            six.ensure_text(file_path.relative_to(tmp_path).as_posix()),
         ]
     )
 
@@ -139,7 +138,7 @@ def multiple_transfer_file_objs(db, transfer, tmp_path, multiple_file_paths):
         "".join(
             [
                 transfer.currentlocation,
-                six.text_type(path.relative_to(tmp_path).as_posix(), "utf-8"),
+                six.ensure_text(path.relative_to(tmp_path).as_posix()),
             ]
         )
         for path in multiple_file_paths
@@ -219,7 +218,7 @@ class TestFilenameChange(TempDirMixin, TestCase):
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
             with open(path, "w") as f:
-                f.write(path.encode("utf8"))
+                f.write(six.ensure_str(path))
 
         try:
             # Change names
@@ -343,10 +342,7 @@ def test_change_transfer_with_multiple_files(
         file_obj.refresh_from_db()
 
         assert file_obj.currentlocation != original_location
-        assert (
-            six.text_type(subdir_path.as_posix(), "utf-8")
-            not in file_obj.currentlocation
-        )
+        assert six.ensure_text(subdir_path.as_posix()) not in file_obj.currentlocation
         assert "bulk-file" in file_obj.currentlocation
         verify_event_details(
             Event.objects.get(file_uuid=file_obj.uuid, event_type="filename change")
@@ -373,8 +369,7 @@ def test_change_transfer_with_directory_uuids(
 
     assert transfer_dir_obj.currentlocation != original_location
     assert (
-        six.text_type(subdir_path.as_posix(), "utf-8")
-        not in transfer_dir_obj.currentlocation
+        six.ensure_text(subdir_path.as_posix()) not in transfer_dir_obj.currentlocation
     )
 
 
@@ -395,17 +390,11 @@ def test_change_sip(tmp_path, sip, subdir_path, sip_dir_obj, sip_file_obj):
     sip_dir_obj.refresh_from_db()
 
     assert sip_dir_obj.currentlocation != original_dir_location
-    assert (
-        six.text_type(subdir_path.as_posix(), "utf-8")
-        not in sip_dir_obj.currentlocation
-    )
+    assert six.ensure_text(subdir_path.as_posix()) not in sip_dir_obj.currentlocation
 
     original_file_location = sip_file_obj.currentlocation
     sip_file_obj.refresh_from_db()
 
     assert sip_file_obj.currentlocation != original_file_location
-    assert (
-        six.text_type(subdir_path.as_posix(), "utf-8")
-        not in sip_file_obj.currentlocation
-    )
+    assert six.ensure_text(subdir_path.as_posix()) not in sip_file_obj.currentlocation
     assert "file" in sip_file_obj.currentlocation

@@ -1,13 +1,11 @@
 # -*- coding: utf8
 import os
 import shutil
-import sys
 import tempfile
 
 from django.test import TestCase
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.abspath(os.path.join(THIS_DIR, "../lib/clientScripts")))
 
 from main import models
 
@@ -48,7 +46,7 @@ class TestStoreFileModification(TestCase):
             dirname = os.path.dirname(path)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
-            with open(path, "w") as f:
+            with open(path, "wb") as f:
                 f.write(path.encode("utf8"))
             os.utime(path, (1339485682, 1339485682))
 

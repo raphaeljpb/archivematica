@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 #
 # This file is part of Archivematica.
 #
@@ -30,6 +30,7 @@ import django
 import scandir
 from lxml import etree
 from django.db.models import Prefetch
+import six
 
 django.setup()
 import metsrw
@@ -253,6 +254,12 @@ class FSEntriesTree(object):
                 premis_event = event_to_premis(event)
                 fsentry.add_premis_event(premis_event)
 
+            for agent in Agent.objects.extend_queryset_with_preservation_system(
+                Agent.objects.filter(event__file_uuid=file_obj).distinct()
+            ):
+                premis_agent = agent_to_premis(agent)
+                fsentry.add_premis_agent(premis_agent)
+
     def load_rights_data_from_db(self):
         transfer_rights = self.rights_queryset.filter(
             metadataappliestoidentifier=self.transfer.uuid,
@@ -260,11 +267,11 @@ class FSEntriesTree(object):
         )
 
         for rights in transfer_rights:
-            for path, fsentry in self.file_index.iteritems():
+            for path, fsentry in six.iteritems(self.file_index):
                 premis_rights = rights_to_premis(rights, fsentry.file_uuid)
                 fsentry.add_premis_rights(premis_rights)
 
-        for path, fsentry in self.file_index.iteritems():
+        for path, fsentry in six.iteritems(self.file_index):
             file_rights = self.rights_queryset.filter(
                 metadataappliestoidentifier=fsentry.file_uuid,
                 metadataappliestotype_id=self.FILE_RIGHTS_LOOKUP_UUID,
@@ -293,7 +300,7 @@ class FSEntriesTree(object):
 
     def check_for_missing_file_uuids(self):
         missing = []
-        for path, fsentry in self.file_index.iteritems():
+        for path, fsentry in six.iteritems(self.file_index):
             if fsentry.file_uuid is None:
                 logger.info("No record in database for file: %s", path)
                 missing.append(path)
@@ -715,6 +722,30 @@ def event_to_premis(event):
     )
 
 
+def agent_to_premis(agent):
+    """
+    Converts an Agent model to a PREMIS event object via metsrw.
+
+    Returns:
+        lxml.etree._Element
+    """
+    premis_data = (
+        "agent",
+        PREMIS_META,
+        (
+            "agent_identifier",
+            ("agent_identifier_type", agent.identifiertype),
+            ("agent_identifier_value", agent.identifiervalue),
+        ),
+        ("agent_name", agent.name),
+        ("agent_type", agent.agenttype),
+    )
+
+    return metsrw.plugins.premisrw.data_to_premis(
+        premis_data, premis_version=PREMIS_META["version"]
+    )
+
+
 def rights_to_premis(rights, file_uuid):
     """
     Converts an RightsStatement model to a PREMIS event object via metsrw.
@@ -789,9 +820,6 @@ def call(jobs):
     parser.add_argument("-s", "--basePath", dest="base_path")
     parser.add_argument(
         "-b", "--basePathString", dest="base_path_string", default="SIPDirectory"
-    )
-    parser.add_argument(
-        "-f", "--fileGroupIdentifier", dest="file_group_identifier", default="sipUUID"
     )
     parser.add_argument("-S", "--sipUUID", dest="sip_uuid")
     parser.add_argument("-x", "--xmlFile", dest="xml_file")

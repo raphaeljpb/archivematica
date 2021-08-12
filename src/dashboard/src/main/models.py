@@ -35,6 +35,7 @@ from django.db import IntegrityError
 from django.db import models, transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils.six import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
 import six
 
@@ -93,9 +94,9 @@ def create_user_agent(sender, instance, **kwargs):
             "identifiertype": "Archivematica user pk",
             "identifiervalue": str(instance.id),
             "name": 'username="{}", first_name="{}", last_name="{}"'.format(
-                instance.username.encode("utf8"),
-                instance.first_name.encode("utf8"),
-                instance.last_name.encode("utf8"),
+                six.ensure_str(instance.username),
+                six.ensure_str(instance.first_name),
+                six.ensure_str(instance.last_name),
             ),
             "agenttype": "Archivematica user",
         },
@@ -227,6 +228,7 @@ class Access(models.Model):
         return Job.objects.filter(sipuuid=self.sipuuid).get_directory_name()
 
 
+@python_2_unicode_compatible
 class DublinCore(models.Model):
     """ DublinCore metadata associated with a SIP or Transfer. """
 
@@ -280,19 +282,25 @@ class DublinCore(models.Model):
     class Meta:
         db_table = u"Dublincore"
 
-    def __unicode__(self):
+    def __str__(self):
         if self.title:
             return u"%s" % self.title
         else:
             return six.text_type(_("Untitled"))
 
 
+@python_2_unicode_compatible
 class MetadataAppliesToType(models.Model):
     """
     What type of unit (SIP, DIP, Transfer etc) the metadata link is.
 
     TODO replace this with choices fields.
     """
+
+    # Generated via migrations.
+    SIP_TYPE = "3e48343d-e2d2-4956-aaa3-b54d26eb9761"
+    TRANSFER_TYPE = "45696327-44c5-4e78-849b-e027a189bf4d"
+    FILE_TYPE = "7f04d9d4-92c2-44a5-93dc-b7bfdf0c1f17"
 
     id = UUIDPkField()
     description = models.CharField(max_length=50, db_column="description")
@@ -304,10 +312,11 @@ class MetadataAppliesToType(models.Model):
     class Meta:
         db_table = u"MetadataAppliesToTypes"
 
-    def __unicode__(self):
+    def __str__(self):
         return six.text_type(self.description)
 
 
+@python_2_unicode_compatible
 class Event(models.Model):
     """ PREMIS Events associated with Files. """
 
@@ -335,7 +344,7 @@ class Event(models.Model):
     class Meta:
         db_table = u"Events"
 
-    def __unicode__(self):
+    def __str__(self):
         return six.text_type(
             _("%(type)s event on %(file_uuid)s (%(detail)s)")
             % {
@@ -346,6 +355,7 @@ class Event(models.Model):
         )
 
 
+@python_2_unicode_compatible
 class Derivation(models.Model):
     """
     Link between original and normalized files.
@@ -380,7 +390,7 @@ class Derivation(models.Model):
     class Meta:
         db_table = u"Derivations"
 
-    def __unicode__(self):
+    def __str__(self):
         return six.text_type(
             _("%(derived)s derived from %(src)s in %(event)s")
             % {
@@ -391,15 +401,39 @@ class Derivation(models.Model):
         )
 
 
-class UnitHiddenManager(models.Manager):
-    def is_hidden(self, uuid):
-        """ Return True if the unit (SIP, Transfer) with uuid is hidden. """
-        try:
-            return self.get_queryset().get(uuid=uuid).hidden
-        except:
-            return False
+class PackageManager(models.Manager):
+    def done(self, completed_before=None, include_failed=True, include_unknown=False):
+        statuses = [PACKAGE_STATUS_DONE, PACKAGE_STATUS_COMPLETED_SUCCESSFULLY]
+        if include_failed:
+            statuses.append(PACKAGE_STATUS_FAILED)
+        if include_unknown:
+            statuses.append(PACKAGE_STATUS_UNKNOWN)
+        qs = self.get_queryset().filter(status__in=statuses)
+        if completed_before:
+            qs = qs.filter(completed_at__lt=completed_before)
+        return qs
 
 
+# Models SIP and Transfer define a status property describing processing status
+# with the following possible choices. It is possible that its value is left
+# in an inconsistent state when processing ends abruptly. MCPServer marks all
+# packages with unknown and processing status as failed at startup time in the
+# lack of a better recovery mechanism.
+PACKAGE_STATUS_UNKNOWN = 0
+PACKAGE_STATUS_PROCESSING = 1
+PACKAGE_STATUS_DONE = 2
+PACKAGE_STATUS_COMPLETED_SUCCESSFULLY = 3
+PACKAGE_STATUS_FAILED = 4
+PACKAGE_STATUS_CHOICES = (
+    (PACKAGE_STATUS_UNKNOWN, _("Unknown")),
+    (PACKAGE_STATUS_PROCESSING, _("Processing")),
+    (PACKAGE_STATUS_DONE, _("Done")),
+    (PACKAGE_STATUS_COMPLETED_SUCCESSFULLY, _("Completed successfully")),
+    (PACKAGE_STATUS_FAILED, _("Failed")),
+)
+
+
+@python_2_unicode_compatible
 class SIP(models.Model):
     """ Information on SIP units. """
 
@@ -420,13 +454,20 @@ class SIP(models.Model):
     )
     identifiers = models.ManyToManyField("Identifier")
     diruuids = models.BooleanField(db_column="dirUUIDs", default=False)
+    status = models.PositiveSmallIntegerField(
+        db_column="status",
+        choices=PACKAGE_STATUS_CHOICES,
+        default=PACKAGE_STATUS_UNKNOWN,
+        blank=False,
+    )
+    completed_at = models.DateTimeField(null=True)
 
-    objects = UnitHiddenManager()
+    objects = PackageManager()
 
     class Meta:
         db_table = u"SIPs"
 
-    def __unicode__(self):
+    def __str__(self):
         return six.text_type(_("SIP: {path}") % {"path": self.currentpath})
 
     def update_active_agent(self, user_id):
@@ -452,13 +493,16 @@ class SIP(models.Model):
 
         return Agent.objects.filter(agent_lookups)
 
-
-class TransferManager(models.Manager):
-    def is_hidden(self, uuid):
+    @property
+    def status_str(self):
         try:
-            return Transfer.objects.get(uuid__exact=uuid).hidden is True
-        except:
-            return False
+            return PACKAGE_STATUS_CHOICES[self.status][1]
+        except (TypeError, IndexError):
+            return None
+
+    @property
+    def active(self):
+        return self.status == PACKAGE_STATUS_PROCESSING
 
 
 class Transfer(models.Model):
@@ -483,8 +527,17 @@ class Transfer(models.Model):
         on_delete=models.CASCADE,
     )
     diruuids = models.BooleanField(db_column="dirUUIDs", default=False)
+    status = models.PositiveSmallIntegerField(
+        db_column="status",
+        choices=PACKAGE_STATUS_CHOICES,
+        default=PACKAGE_STATUS_UNKNOWN,
+        blank=False,
+    )
+    completed_at = models.DateTimeField(null=True)
 
-    objects = UnitHiddenManager()
+    objects = PackageManager()
+
+    ARCHIVEMATICA_AIP = "Archivematica AIP"
 
     class Meta:
         db_table = u"Transfers"
@@ -527,7 +580,19 @@ class Transfer(models.Model):
             result = unit_variable.variablevalue
         return result or "default"
 
+    @property
+    def status_str(self):
+        try:
+            return PACKAGE_STATUS_CHOICES[self.status][1]
+        except (TypeError, IndexError):
+            return None
 
+    @property
+    def active(self):
+        return self.status == PACKAGE_STATUS_PROCESSING
+
+
+@python_2_unicode_compatible
 class SIPArrange(models.Model):
     """ Information about arranged files: original and arranged location, current status. """
 
@@ -550,7 +615,7 @@ class SIPArrange(models.Model):
     class Meta:
         verbose_name = _("Arranged SIPs")
 
-    def __unicode__(self):
+    def __str__(self):
         return six.text_type(
             _("%(original)s -> %(arrange)s")
             % {"original": self.original_path, "arrange": self.arrange_path}
@@ -615,6 +680,7 @@ class Identifier(models.Model):
         db_table = u"Identifiers"
 
 
+@python_2_unicode_compatible
 class File(models.Model):
     """ Information about Files in units (Transfers, SIPs). """
 
@@ -672,7 +738,7 @@ class File(models.Model):
         # ("sip", "originallocation"),
         index_together = (("sip", "filegrpuse"),)
 
-    def __unicode__(self):
+    def __str__(self):
         return six.text_type(
             _("File %(uuid)s:%(originallocation)s now at %(currentlocation)s")
             % {
@@ -686,7 +752,15 @@ class File(models.Model):
         """Allow callers to add custom identifiers to the model's instance."""
         self.identifiers.create(type=scheme, value=value)
 
+    @property
+    def in_reingested_aip(self):
+        """Return boolean indicating if file is in reingested AIP"""
+        if not self.transfer:
+            return False
+        return self.transfer.type == Transfer.ARCHIVEMATICA_AIP and not self.sip
 
+
+@python_2_unicode_compatible
 class Directory(models.Model):
     """Information about Directories in units (Transfers, SIPs).
     Note: Directory instances are only created if the user explicitly
@@ -718,7 +792,7 @@ class Directory(models.Model):
     class Meta:
         db_table = u"Directories"
 
-    def __unicode__(self):
+    def __str__(self):
         return six.text_type(
             _("Directory %(uuid)s: %(originallocation)s now at %(currentlocation)s")
             % {
@@ -761,6 +835,7 @@ class Directory(models.Model):
         return cls.objects.bulk_create(paths)
 
 
+@python_2_unicode_compatible
 class FileFormatVersion(models.Model):
     """
     Link between a File and the FormatVersion it is identified as.
@@ -782,7 +857,7 @@ class FileFormatVersion(models.Model):
     class Meta:
         db_table = u"FilesIdentifiedIDs"
 
-    def __unicode__(self):
+    def __str__(self):
         return six.text_type(
             _("%(file)s is %(format)s")
             % {"file": self.file_uuid, "format": self.format_version}
@@ -1023,6 +1098,7 @@ class Report(models.Model):
         db_table = u"Reports"
 
 
+@python_2_unicode_compatible
 class RightsStatement(models.Model):
     id = models.AutoField(primary_key=True, db_column="pk")
     metadataappliestotype = models.ForeignKey(
@@ -1069,7 +1145,7 @@ class RightsStatement(models.Model):
         db_table = u"RightsStatement"
         verbose_name = _("Rights Statement")
 
-    def __unicode__(self):
+    def __str__(self):
         return six.text_type(
             _("%(basis)s for %(unit)s (%(id)s)")
             % {
@@ -1611,6 +1687,7 @@ class TransferMetadataSet(models.Model):
         db_table = u"TransferMetadataSets"
 
 
+@python_2_unicode_compatible
 class TransferMetadataField(models.Model):
     id = UUIDPkField()
     createdtime = models.DateTimeField(
@@ -1631,7 +1708,7 @@ class TransferMetadataField(models.Model):
     class Meta:
         db_table = u"TransferMetadataFields"
 
-    def __unicode__(self):
+    def __str__(self):
         return self.fieldlabel
 
 
@@ -1660,6 +1737,7 @@ class TransferMetadataFieldValue(models.Model):
 # to leave room for future expansion. The possible taxonomy terms are
 # designed to be editable, and forms to do so exist. (Forms for editing and
 # defining new fields are present in the code but currently disabled.)
+@python_2_unicode_compatible
 class Taxonomy(models.Model):
     id = UUIDPkField()
     createdtime = models.DateTimeField(
@@ -1671,10 +1749,11 @@ class Taxonomy(models.Model):
     class Meta:
         db_table = u"Taxonomies"
 
-    def __unicode__(self):
+    def __str__(self):
         return self.name
 
 
+@python_2_unicode_compatible
 class TaxonomyTerm(models.Model):
     id = UUIDPkField()
     createdtime = models.DateTimeField(
@@ -1688,10 +1767,11 @@ class TaxonomyTerm(models.Model):
     class Meta:
         db_table = u"TaxonomyTerms"
 
-    def __unicode__(self):
+    def __str__(self):
         return self.term
 
 
+@python_2_unicode_compatible
 class FPCommandOutput(models.Model):
     file = models.ForeignKey(
         "File", db_column="fileUUID", to_field="uuid", on_delete=models.CASCADE
@@ -1703,7 +1783,7 @@ class FPCommandOutput(models.Model):
 
     # Table name is main_fpcommandoutput
 
-    def __unicode__(self):
+    def __str__(self):
         return u"<file: {file}; rule: {rule}; content: {content}".format(
             file=self.file, rule=self.rule, content=self.content[:20]
         )
@@ -1729,13 +1809,14 @@ class FileID(models.Model):
         db_table = "FilesIDs"
 
 
+@python_2_unicode_compatible
 class LevelOfDescription(models.Model):
     id = UUIDPkField()
     name = models.CharField(max_length=1024)  # seems long, but AtoM allows this much
     # sortorder should be unique, but is not defined so here to enable swapping
     sortorder = models.IntegerField(default=0, db_column="sortOrder")
 
-    def __unicode__(self):
+    def __str__(self):
         return six.text_type(
             _("%(sortorder)s: %(name)s")
             % {"sortorder": self.sortorder, "name": self.name}

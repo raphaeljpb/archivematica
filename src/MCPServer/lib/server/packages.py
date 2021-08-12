@@ -13,7 +13,8 @@ from uuid import UUID, uuid4
 
 import scandir
 from django.conf import settings
-from django.utils import six
+from django.utils import timezone
+import six
 
 import storageService as storage_service
 from archivematicaFunctions import strToUnicode
@@ -237,7 +238,7 @@ def _copy_from_transfer_sources(paths, relative_destination):
         # below. This allows transfers to be started on UTF-8-encoded directory
         # names.
         source = path.replace(
-            files[location]["location"]["path"].encode("utf8"), "", 1
+            six.ensure_str(files[location]["location"]["path"]), "", 1
         ).lstrip("/")
         # Use the last segment of the path for the destination - basename for a
         # file, or the last folder if not. Keep the trailing / for folders.
@@ -247,7 +248,7 @@ def _copy_from_transfer_sources(paths, relative_destination):
             else os.path.basename(source)
         )
         destination = os.path.join(
-            processing_location["path"].encode("utf8"),
+            six.ensure_str(processing_location["path"]),
             relative_destination,
             last_segment,
         ).replace("%sharedPath%", "")
@@ -558,6 +559,45 @@ class Package(object):
             current_path=self.current_path,
         )
 
+    @classmethod
+    @auto_close_old_connections()
+    def cleanup_old_db_entries(cls):
+        """Update the status of any in progress package.
+
+        This command is run on startup.
+        TODO: we could try to recover, instead of just failing.
+        """
+        completed_at = timezone.now()
+        statuses = (models.PACKAGE_STATUS_UNKNOWN, models.PACKAGE_STATUS_PROCESSING)
+        models.Transfer.objects.filter(status__in=statuses).update(
+            status=models.PACKAGE_STATUS_FAILED,
+            completed_at=completed_at,
+        )
+        models.SIP.objects.filter(status__in=statuses).update(
+            status=models.PACKAGE_STATUS_FAILED,
+            completed_at=completed_at,
+        )
+
+    @abc.abstractmethod
+    def queryset(self):
+        raise NotImplementedError
+
+    def change_status(self, status, **defaults):
+        """Change the status of the package.
+
+        Use one of the possible values in ``models.PACKAGE_STATUS_CHOICES``.
+        """
+        with auto_close_old_connections():
+            self.queryset().update(status=status, **defaults)
+
+    def mark_as_done(self):
+        """Change the status of the package to Done."""
+        self.change_status(models.PACKAGE_STATUS_DONE, completed_at=timezone.now())
+
+    def mark_as_processing(self):
+        """Change the status of the package to Processing."""
+        self.change_status(models.PACKAGE_STATUS_PROCESSING)
+
     @property
     def current_path(self):
         return self._current_path
@@ -699,6 +739,9 @@ class SIPDIP(Package):
     share the same model in Archivematica.
     """
 
+    def queryset(self):
+        return models.SIP.objects.filter(pk=self.uuid)
+
     @classmethod
     @auto_close_old_connections()
     def get_or_create_from_db_by_path(cls, path):
@@ -770,6 +813,9 @@ class Transfer(Package):
     REPLACEMENT_PATH_STRING = r"%transferDirectory%"
     UNIT_VARIABLE_TYPE = "Transfer"
     JOB_UNIT_TYPE = "unitTransfer"
+
+    def queryset(self):
+        return models.Transfer.objects.filter(pk=self.uuid)
 
     @classmethod
     @auto_close_old_connections()

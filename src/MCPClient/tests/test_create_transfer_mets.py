@@ -2,7 +2,6 @@
 from __future__ import unicode_literals
 
 import os
-import sys
 import uuid
 
 import pytest
@@ -22,9 +21,8 @@ from main.models import (
     RightsStatement,
     Transfer,
 )
+from version import get_preservation_system_identifier
 
-THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.abspath(os.path.join(THIS_DIR, "../lib/clientScripts")))
 from create_transfer_mets import write_mets
 
 
@@ -481,6 +479,32 @@ def test_transfer_mets_includes_events(tmp_path, transfer, event):
         premis_event_agent_id_value
         == Agent.objects.get_preservation_system_agent().identifiervalue
     )
+
+    premis_agent_software = mets_xml.xpath(
+        "//premis:agent/premis:agentType[text()='software']/..",
+        namespaces=PREMIS_NAMESPACES,
+    )[0]
+    premis_agent_software_identifier_type = premis_agent_software.findtext(
+        "premis:agentIdentifier/premis:agentIdentifierType",
+        namespaces=PREMIS_NAMESPACES,
+    )
+    premis_agent_software_identifier_value = premis_agent_software.findtext(
+        "premis:agentIdentifier/premis:agentIdentifierValue",
+        namespaces=PREMIS_NAMESPACES,
+    )
+    premis_agent_software_name = premis_agent_software.findtext(
+        "premis:agentName", namespaces=PREMIS_NAMESPACES
+    )
+    premis_agent_software_type = premis_agent_software.findtext(
+        "premis:agentType", namespaces=PREMIS_NAMESPACES
+    )
+
+    assert premis_agent_software_identifier_type == "preservation system"
+    assert (
+        premis_agent_software_identifier_value == get_preservation_system_identifier()
+    )
+    assert premis_agent_software_name == "Archivematica"
+    assert premis_agent_software_type == "software"
 
 
 @pytest.mark.django_db

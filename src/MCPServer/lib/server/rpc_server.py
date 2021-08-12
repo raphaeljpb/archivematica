@@ -11,7 +11,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from collections import OrderedDict
 
 import calendar
-import cPickle
 import inspect
 import logging
 from socket import gethostname
@@ -20,12 +19,12 @@ import time
 
 from django.conf import settings as django_settings
 from django.db import connection
-from django.utils import six
 from django.utils.six.moves import configparser
 from gearman import GearmanWorker
 import gearman
 from lxml import etree
-
+from six.moves import cPickle
+import six
 
 from archivematicaFunctions import strToUnicode
 from main.models import Job, SIP, Transfer
@@ -116,7 +115,7 @@ class RPCServer(GearmanWorker):
         self.package_queue = package_queue
         self.executor = executor
         self._register_tasks()
-        client_id = b"{}_MCPServer".format(gethostname())
+        client_id = "{}_MCPServer".format(gethostname()).encode("utf-8")
         self.set_client_id(client_id)
 
     def after_poll(self, any_activity):
@@ -129,7 +128,7 @@ class RPCServer(GearmanWorker):
     def _register_tasks(self):
         for ability, handler in self._handlers():
             logger.debug("Registering ability %s", ability)
-            self.register_task(ability, handler)
+            self.register_task(six.ensure_binary(ability), handler)
 
     def _handlers(self):
         members = inspect.getmembers(self, predicate=inspect.ismethod)
@@ -189,7 +188,7 @@ class RPCServer(GearmanWorker):
                 if opts["raise_exc"]:
                     raise  # So GearmanWorker knows that it failed.
                 resp = {"error": True, "handler": name, "message": str(err)}
-            return cPickle.dumps(resp)
+            return cPickle.dumps(resp, protocol=0)
 
         return wrap
 
@@ -368,14 +367,16 @@ class RPCServer(GearmanWorker):
         jobs_awaiting_for_approval = self.package_queue.jobs_awaiting_decisions()
         objects = []
         for unit_id, timestamp in sipuuids_and_timestamps:
+            unit = model.objects.get(pk=unit_id)
+            if unit.hidden:
+                continue
             item = {
                 "id": unit_id,
                 "uuid": unit_id,
                 "timestamp": float(timestamp),
+                "active": unit.active,
                 "jobs": [],
             }
-            if model.objects.is_hidden(unit_id):
-                continue
             jobs = Job.objects.filter(sipuuid=unit_id).order_by("-createdtime")
             if jobs:
                 item["directory"] = jobs[0].get_directory_name()

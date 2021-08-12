@@ -37,6 +37,7 @@ from tastypie.models import ApiKey
 from six.moves.urllib.parse import urlencode, urljoin
 from six.moves import range
 from six.moves import zip
+import six
 
 from amclient import AMClient
 
@@ -66,7 +67,11 @@ def dictfetchall(cursor):
     return [dict(list(zip([col[0] for col in desc], row))) for row in cursor.fetchall()]
 
 
-def keynat(string):
+def _is_numeric(v):
+    return isinstance(v, six.integer_types + (float,))
+
+
+def keynat(string, fmt="%9s"):
     r"""A natural sort helper function for sort() and sorted()
     without using regular expressions or exceptions.
 
@@ -76,18 +81,27 @@ def keynat(string):
     >>> sorted(items, key=keynat)
     ['1st', '9', '10th', 'a', 'Z']
     """
-    it = type(1)
-    r = []
-    for c in string:
-        if c.isdigit():
-            d = int(c)
-            if r and isinstance(r[-1], it):
-                r[-1] = r[-1] * 10 + d
+    if _is_numeric(string):
+        string = str(string)
+    if not isinstance(string, six.string_types):
+        result = (
+            "",
+            string.__class__.__name__,
+            hash(string)
+            if hasattr(string, "__hash__") and string.__hash__ is not None
+            else id(string),
+        )
+    else:
+        result = []
+        for c in string:
+            if c.isdigit():
+                if result and _is_numeric(result[-1]):
+                    result[-1] = result[-1] * 10 + int(c)
+                else:
+                    result.append(int(c))
             else:
-                r.append(d)
-        else:
-            r.append(c.lower())
-    return r
+                result.append(c.lower())
+    return tuple(((fmt % i) if _is_numeric(i) else i) for i in result)
 
 
 def json_response(data, status_code=200):
@@ -254,7 +268,7 @@ def send_file(request, filepath, force_download=False):
     filename = os.path.basename(filepath)
     extension = os.path.splitext(filepath)[1].lower()
 
-    wrapper = FileWrapper(open(filepath))
+    wrapper = FileWrapper(open(filepath, "rb"))
     response = HttpResponse(wrapper)
 
     # force download for certain filetypes
@@ -310,10 +324,21 @@ def processing_config_path():
 def _prepare_stream_response(
     payload, content_type, content_disposition, preview_file=False
 ):
-    """Prepare the streaming response to return to the caller."""
+    """Prepare the streaming response to return to the caller.
+
+    It iterates over the response data (payload) to avoid reading the content at
+    once into memory.
+
+    :param payload: The response object (requests.Response).
+    :param content_type: Content-Type header value.
+    :param content_disposition: Content-Disposition header value.
+    :param preview_file: Display contents inside the web page.
+    :return: The response object (requests.Response) sent to the browser.
+    """
     if preview_file:
         content_disposition = "inline"
-    response = StreamingHttpResponse(payload)
+    chunk_size = 1024 * 1024
+    response = StreamingHttpResponse(payload.iter_content(chunk_size=chunk_size))
     response["Content-Type"] = content_type
     response["Content-Disposition"] = content_disposition
     return response

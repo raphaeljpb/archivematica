@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 """
 Execute the .call(jobs) function of a clientScripts module from multiple
@@ -13,7 +13,7 @@ function (indicating that it supports being run as a subprocess).
 """
 
 
-import cPickle
+import six.moves.cPickle
 import importlib
 import logging
 import multiprocessing
@@ -23,6 +23,7 @@ import tempfile
 import traceback
 
 import django
+import six
 
 django.setup()
 from databaseFunctions import auto_close_db
@@ -63,7 +64,7 @@ def call(module_name, jobs, task_count=multiprocessing.cpu_count()):
 
 def _split_jobs(jobs, n):
     "Split `jobs` into n approximately equally-sized pieces"
-    chunk_size = len(jobs) / n
+    chunk_size = len(jobs) // n
     result = []
 
     while jobs:
@@ -99,13 +100,13 @@ def _run_jobs(module_name, jobs):
                 os.path.join(os.path.dirname(os.path.abspath(__file__)), THIS_SCRIPT),
                 module_name,
             ],
-            cPickle.dumps(environment),
+            six.moves.cPickle.dumps(environment, protocol=0),
             printing=False,
             capture_output=True,
         )
 
-        with os.fdopen(fd) as f:
-            result = cPickle.load(f)
+        with os.fdopen(fd, "rb") as f:
+            result = six.moves.cPickle.load(f)
 
             if isinstance(result, dict) and result["uncaught_exception"]:
                 e = result["uncaught_exception"]
@@ -131,19 +132,23 @@ if __name__ == "__main__":
         )
 
     module_to_run = sys.argv[1]
-    environment = cPickle.load(sys.stdin)
+    if six.PY2:
+        buffer = sys.stdin
+    else:
+        buffer = sys.stdin.buffer
+    environment = six.moves.cPickle.load(buffer)
 
     sys.path = environment["sys.path"]
     jobs = environment["jobs"]
     output_file = environment["output_file"]
 
-    with open(output_file, "w") as f:
+    with open(output_file, "wb") as f:
         try:
             module = importlib.import_module(module_to_run)
             module.call(jobs)
-            cPickle.dump(jobs, f)
+            six.moves.cPickle.dump(jobs, f, protocol=0)
         except Exception as e:
-            cPickle.dump(
+            six.moves.cPickle.dump(
                 {
                     "uncaught_exception": {
                         "message": e.message,
@@ -152,4 +157,5 @@ if __name__ == "__main__":
                     }
                 },
                 f,
+                protocol=0,
             )

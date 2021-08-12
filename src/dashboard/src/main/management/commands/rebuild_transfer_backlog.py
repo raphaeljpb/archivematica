@@ -9,10 +9,32 @@ It also requests the Storage Service to reindex the transfers.
 This must be run on the same system that Archivematica is installed on, since
 it uses code from the Archivematica codebase.
 
-The one required parameter is the path to the directory where Transfer Backlog
-location is stored.
+Based on https://git.io/vN6v6.
 
-Copied from https://git.io/vN6v6.
+Optional parameters:
+
+``--transfer-backlog-dir [storage_location_path]`` : path where the Transfer
+Backlog storage location is located in the local filesystem.
+Default: /var/archivematica/sharedDirectory/www/AIPsStore/transferBacklog.
+
+``--no-prompt`` : do not ask for confirmation.
+
+``--from-storage-service`` : uses the Storage Service API to determine
+which stored transfers need to be re-indexed. Temporarily downloads a
+copy of each transfer via the API for indexing. This enables reindexing
+of packages stored in encrypted locations as well as some remote locations.
+
+``--delete-all`` : will delete the entire AIP Elasticsearch index and create
+an empty index before starting to reindex
+
+``-u`` or ``--uuid`` : only reindex the transfer that has the matching UUID.
+
+``--skip-to``: starts reindexing from the specified uuid. Useful if a previous
+reindex attempt was interrupted for some reason. Mutually exclusive
+with ``--uuid`` option
+
+``--delete``: before re-reindexing a transfer, will delete any data found in Elasticsearch with a matching UUID. In contrast with the ``--delete-all``, it does not delete the entire index.
+
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
@@ -88,6 +110,30 @@ class Command(DashboardCommand):
             help="Pipeline UUID to use when filtering packages from Storage Service",
             default=am.get_dashboard_uuid(),
         )
+        parser.add_argument(
+            "--delete-all",
+            action="store_true",
+            help="Delete all transfers information in the index before starting.",
+        )
+        parser.add_argument(
+            "-u",
+            "--uuid",
+            action="store",
+            default=None,
+            help="Specify a single transfer by UUID to process",
+        )
+        parser.add_argument(
+            "--skip-to",
+            action="store",
+            default=None,
+            help="Specify starting transfer UUID to process. Mutually exclusive with --uuid option",
+        )
+        parser.add_argument(
+            "-d",
+            "--delete",
+            action="store_true",
+            help="Delete AIP-related Elasticsearch data before indexing AIP data",
+        )
 
     def handle(self, *args, **options):
         """Entry point of the rebuild_transfer_backlog command."""
@@ -104,6 +150,9 @@ class Command(DashboardCommand):
         if not self.confirm(options["no_prompt"]):
             sys.exit(0)
 
+        if options["uuid"] and options["skip_to"]:
+            raise CommandError("Arguments --uuid and --skip-to are mutually exclusive.")
+
         # Ignore elasticsearch-py logging events unless they're errors.
         logging.getLogger("elasticsearch").setLevel(logging.ERROR)
         logging.getLogger("archivematica.common").setLevel(logging.ERROR)
@@ -113,7 +162,9 @@ class Command(DashboardCommand):
             self.info('Rebuilding "transfers" index from packages in Storage Service.')
         else:
             if not os.path.exists(transfer_backlog_dir):
-                raise CommandError("Directory does not exist: %s", transfer_backlog_dir)
+                raise CommandError(
+                    "Directory does not exist: %s" % transfer_backlog_dir
+                )
             self.info(
                 'Rebuilding "transfers" index from {}.'.format(transfer_backlog_dir)
             )
@@ -132,22 +183,35 @@ class Command(DashboardCommand):
                 )
             )
 
-        indexes = [es.TRANSFERS_INDEX, es.TRANSFER_FILES_INDEX]
-        self.delete_indexes(es_client, indexes)
-        self.create_indexes(es_client, indexes)
+        if options["delete_all"]:
+            indexes = [es.TRANSFERS_INDEX, es.TRANSFER_FILES_INDEX]
+            self.delete_indexes(es_client, indexes)
+            self.create_indexes(es_client, indexes)
 
         if options["from_storage_service"]:
             pipeline_uuid = options["pipeline"]
-            self.populate_data_from_storage_service(es_client, pipeline_uuid)
+            self.populate_data_from_storage_service(
+                es_client,
+                pipeline_uuid,
+                uuid=options["uuid"],
+                skip_to=options["skip_to"],
+                delete=options["delete"],
+            )
         else:
-            self.populate_data_from_files(es_client, transfer_backlog_dir)
+            self.populate_data_from_files(
+                es_client,
+                transfer_backlog_dir,
+                uuid=options["uuid"],
+                skip_to=options["skip_to"],
+                delete=options["delete"],
+            )
 
     def confirm(self, no_prompt):
         """Ask user to confirm the operation."""
         if no_prompt:
             return True
         self.warning(
-            "WARNING: This script will delete your current"
+            "WARNING: This script will overwrite your current"
             " Elasticsearch transfer data, rebuilding it using"
             " files."
         )
@@ -174,10 +238,13 @@ class Command(DashboardCommand):
         self.stdout.write("Creating indexes...")
         es.create_indexes_if_needed(es_client, indexes)
 
-    def populate_data_from_files(self, es_client, transfer_backlog_dir):
+    def populate_data_from_files(
+        self, es_client, transfer_backlog_dir, uuid=None, skip_to=None, delete=False
+    ):
         """Populate indices and/or database from files."""
         transfer_backlog_dir = Path(transfer_backlog_dir)
         processed = 0
+        skip_found = False
         for transfer_dir in transfer_backlog_dir.glob("*"):
             if transfer_dir.name == ".gitignore" or transfer_dir.is_file():
                 continue
@@ -189,11 +256,27 @@ class Command(DashboardCommand):
             except bagit.BagError:
                 bag = None
             transfer_uuid = transfer_dir.name[-36:]
+            # If skip_to option specified, skip until uuid found
+            if skip_to and (skip_to.lower() == transfer_uuid.lower()):
+                skip_found = True
+            if skip_to and (not skip_found):
+                self.info("Skipping {}".format(transfer_uuid))
+                continue
+            # If specified a single transfer uuid, skip all others
+            if uuid and (uuid.lower() != transfer_uuid.lower()):
+                continue
+            # if delete option specified delete before reindexing
+            if delete:
+                self.info("Deleting index data of {}".format(transfer_uuid))
+                es.remove_backlog_transfer(es_client, transfer_uuid)
+                es.remove_backlog_transfer_files(es_client, transfer_uuid)
+
             if bag and "External-Identifier" in bag.info:
                 self.info(
                     "Importing self-describing transfer {}.".format(transfer_uuid)
                 )
                 size = am.get_bag_size(bag, str(transfer_dir))
+
                 _import_self_describing_transfer(
                     self, es_client, self.stdout, transfer_dir, transfer_uuid, size
                 )
@@ -203,13 +286,16 @@ class Command(DashboardCommand):
                     size = am.get_bag_size(bag, str(transfer_dir))
                 else:
                     size = am.walk_dir(str(transfer_dir))
+
                 _import_pipeline_dependant_transfer(
                     self, es_client, self.stdout, transfer_dir, transfer_uuid, size
                 )
             processed += 1
         self.success("{} transfers indexed!".format(processed))
 
-    def populate_data_from_storage_service(self, es_client, pipeline_uuid):
+    def populate_data_from_storage_service(
+        self, es_client, pipeline_uuid, uuid=None, skip_to=None, delete=False
+    ):
         """Populate indices and/or database from Storage Service.
 
         :param es_client: Elasticsearch client.
@@ -223,8 +309,24 @@ class Command(DashboardCommand):
             transfers, pipeline_uuid=pipeline_uuid
         )
         processed = 0
+        skip_found = False
         for transfer in filtered_transfers:
             transfer_uuid = transfer["uuid"]
+            # If skip_to option specified, skip until uuid found
+            if skip_to and (skip_to.lower() == transfer_uuid.lower()):
+                skip_found = True
+            if skip_to and (not skip_found):
+                self.info("Skipping {}".format(transfer_uuid))
+                continue
+            # If specified a single transfer uuid, skip all others
+            if uuid and (uuid.lower() != transfer_uuid.lower()):
+                continue
+            # if delete option specified delete before reindexing
+            if delete:
+                self.info("Deleting index data of {}".format(transfer_uuid))
+                es.remove_backlog_transfer(es_client, transfer_uuid)
+                es.remove_backlog_transfer_files(es_client, transfer_uuid)
+
             temp_backlog_dir = tempfile.mkdtemp()
             try:
                 local_package = storageService.download_package(
@@ -405,6 +507,15 @@ def _convert_checksum_algo(algo):
     return algo.replace("-", "").lower()
 
 
+def _get_transfer_mets_path(transfer_dir):
+    mets_relative_path = "metadata/submissionDocumentation/METS.xml"
+    try:
+        bagit.Bag(str(transfer_dir))
+        return str(transfer_dir / "data" / mets_relative_path)
+    except bagit.BagError:
+        return str(transfer_dir / mets_relative_path)
+
+
 def _import_self_describing_transfer(
     cmd, es_client, stdout, transfer_dir, transfer_uuid, size
 ):
@@ -436,9 +547,7 @@ def _import_self_describing_transfer(
 
     # The transfer did not exist, we need to populate everything else.
     if created:
-        mets = metsrw.METSDocument.fromfile(
-            str(transfer_dir / "data/metadata/submissionDocumentation/METS.xml")
-        )
+        mets = metsrw.METSDocument.fromfile(_get_transfer_mets_path(transfer_dir))
 
         try:
             alt_id = mets.alternate_ids[0]

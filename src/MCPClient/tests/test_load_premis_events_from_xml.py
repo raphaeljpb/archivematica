@@ -12,7 +12,6 @@ from main.models import File
 from main.models import Transfer
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.abspath(os.path.join(THIS_DIR, "../lib/clientScripts")))
 import load_premis_events_from_xml
 
 
@@ -208,8 +207,8 @@ def test_get_elements(mocker):
     result = load_premis_events_from_xml.get_elements(tree, selector, element_factory)
     element.get.assert_called_once_with("version")
     element.set.assert_called_once_with("version", "3.0")
-    assert result.keys() == ["id"]
-    assert result.values() == [{"identifier": "id"}]
+    assert list(result.keys()) == ["id"]
+    assert list(result.values()) == [{"identifier": "id"}]
 
 
 def test_get_premis_element_children_identifiers(mocker):

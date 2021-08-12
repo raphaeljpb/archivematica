@@ -10,6 +10,7 @@ import requests
 from requests.auth import AuthBase
 from six.moves import map
 import six.moves.urllib as urllib
+import six
 
 # archivematicaCommon
 import archivematicaFunctions as am
@@ -227,7 +228,7 @@ def location_description_from_slug(aip_location_slug):
        * /api/v2/location/3e796bef-0d56-4471-8700-eeb256859811/
        * /api/v2/location/default/AS/"
 
-    :param string aip_location: storage location URI slug
+    :param string aip_location_slug: storage location URI slug
     :return: storage service location description
     :rtype: dict
     """
@@ -305,10 +306,10 @@ def copy_files(source_location, destination_location, files):
     # string.
     for file_ in move_files["files"]:
         try:
-            file_["source"] = file_["source"].decode("utf8")
+            file_["source"] = six.ensure_str(file_["source"])
         except UnicodeDecodeError:
             try:
-                file_["source"] = file_["source"].decode("latin-1")
+                file_["source"] = six.ensure_str(file_["source"], encoding="latin-1")
             except UnicodeError:
                 pass
 
@@ -669,7 +670,7 @@ def retrieve_storage_location_description(aip_location_slug, logger=None):
        * /api/v2/location/3e796bef-0d56-4471-8700-eeb256859811/
        * /api/v2/location/default/AS/"
 
-    :param string aip_location: storage location URI slug
+    :param string aip_location_slug: storage location URI slug
     :return: storage service location description or an empty string
     if a description cannot be retrieved.
     :rtype: str

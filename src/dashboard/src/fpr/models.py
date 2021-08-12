@@ -11,6 +11,7 @@ import logging
 
 from django.db import connection, models
 from django.utils.translation import ugettext_lazy as _
+from django.utils.six import python_2_unicode_compatible
 
 from autoslug import AutoSlugField
 from django_extensions.db.fields import UUIDField
@@ -131,6 +132,7 @@ class FormatManager(models.Manager):
             return ret
 
 
+@python_2_unicode_compatible
 class Format(models.Model):
     """User-friendly description of format.
 
@@ -159,10 +161,11 @@ class Format(models.Model):
         verbose_name = _("Format")
         ordering = ["group", "description"]
 
-    def __unicode__(self):
+    def __str__(self):
         return u"{}: {}".format(self.group.description, self.description)
 
 
+@python_2_unicode_compatible
 class FormatGroup(models.Model):
     """ Group/classification for formats.  Eg. image, video, audio. """
 
@@ -176,10 +179,11 @@ class FormatGroup(models.Model):
         verbose_name = _("Format group")
         ordering = ["description"]
 
-    def __unicode__(self):
+    def __str__(self):
         return u"{}".format(self.description)
 
 
+@python_2_unicode_compatible
 class FormatVersion(VersionedModel, models.Model):
     """ Format that a tool identifies. """
 
@@ -236,7 +240,7 @@ class FormatVersion(VersionedModel, models.Model):
                     }
                 )
 
-    def __unicode__(self):
+    def __str__(self):
         return _("%(format)s: %(description)s (%(pronom_id)s)") % {
             "format": self.format,
             "description": self.description,
@@ -247,6 +251,7 @@ class FormatVersion(VersionedModel, models.Model):
 # ########### ID TOOLS ############
 
 
+@python_2_unicode_compatible
 class IDCommand(VersionedModel, models.Model):
     """Command to run an IDToolConfig and parse the output.
 
@@ -288,7 +293,7 @@ class IDCommand(VersionedModel, models.Model):
         verbose_name = _("Format identification command")
         ordering = ["description"]
 
-    def __unicode__(self):
+    def __str__(self):
         return _("%(tool)s %(config)s runs %(command)s") % {
             "tool": self.tool,
             "config": self.get_config_display(),
@@ -309,6 +314,7 @@ class IDCommand(VersionedModel, models.Model):
         super(IDCommand, self).save(*args, **kwargs)
 
 
+@python_2_unicode_compatible
 class IDRule(VersionedModel, models.Model):
     """ Mapping between an IDCommand output and a FormatVersion. """
 
@@ -354,7 +360,7 @@ class IDRule(VersionedModel, models.Model):
                 }
             )
 
-    def __unicode__(self):
+    def __str__(self):
         return _("Format identification rule %(uuid)s") % {"uuid": self.uuid}
 
     def long_name(self):
@@ -365,6 +371,7 @@ class IDRule(VersionedModel, models.Model):
         }
 
 
+@python_2_unicode_compatible
 class IDTool(models.Model):
     """ Tool used to identify formats.  Eg. DROID """
 
@@ -386,7 +393,7 @@ class IDTool(models.Model):
     objects = models.Manager()
     active = Enabled()
 
-    def __unicode__(self):
+    def __str__(self):
         return _("%(description)s") % {"description": self.description}
 
     def _slug(self):
@@ -399,6 +406,7 @@ class IDTool(models.Model):
 # ########### NORMALIZATION ############
 
 
+@python_2_unicode_compatible
 class FPRule(VersionedModel, models.Model):
     uuid = UUIDField(
         editable=False, unique=True, version=4, help_text=_("Unique identifier")
@@ -490,7 +498,7 @@ class FPRule(VersionedModel, models.Model):
     #         raise ValidationError( {
     #             NON_FIELD_ERRORS:('Unable to save, an active Rule for this purpose and format and command already exists.',)})
 
-    def __unicode__(self):
+    def __str__(self):
         return _("Format policy rule %(uuid)s") % {"uuid": self.uuid}
 
     def long_name(self):
@@ -501,6 +509,7 @@ class FPRule(VersionedModel, models.Model):
         }
 
 
+@python_2_unicode_compatible
 class FPCommand(VersionedModel, models.Model):
     uuid = UUIDField(
         editable=False, unique=True, version=4, help_text=_("Unique identifier")
@@ -569,10 +578,11 @@ class FPCommand(VersionedModel, models.Model):
         verbose_name = _("Format policy command")
         ordering = ["description"]
 
-    def __unicode__(self):
+    def __str__(self):
         return u"{}".format(self.description)
 
 
+@python_2_unicode_compatible
 class FPTool(models.Model):
     """ Tool used to perform normalization.  Eg. convert, ffmpeg, ps2pdf. """
 
@@ -590,7 +600,7 @@ class FPTool(models.Model):
     class Meta:
         verbose_name = _("Normalization tool")
 
-    def __unicode__(self):
+    def __str__(self):
         return _("%(description)s") % {"description": self.description}
 
     def _slug(self):
@@ -598,204 +608,3 @@ class FPTool(models.Model):
         src = "{} {}".format(self.description, self.version)
         encoded = src.encode("utf-8")[: self._meta.get_field("slug").max_length]
         return encoded.decode("utf-8", "ignore")
-
-
-# ########################### API V1 & V2 MODELS #############################
-
-
-class Agent(models.Model):
-    uuid = models.CharField(max_length=36, primary_key=True, db_column="uuid")
-    agentIdentifierType = models.CharField(_("agent identifier type"), max_length=100)
-    agentIdentifierValue = models.CharField(_("agent identifier value"), max_length=100)
-    agentName = models.CharField(_("agent name"), max_length=100)
-    agentType = models.CharField(_("agent type"), max_length=100)
-    clientIP = models.CharField(_("client IP address"), max_length=100)
-
-    class Meta:
-        db_table = u"Agent"
-
-
-# ############################# API V1 MODELS ###############################
-
-
-class CommandType(models.Model):
-    uuid = models.CharField(max_length=36, primary_key=True, db_column="pk")
-    replaces = models.CharField(
-        _("replaces"), null=True, max_length=36, db_column="replaces"
-    )
-    type = models.TextField(_("type"), db_column="type")
-    lastmodified = models.DateTimeField(_("last modified"), db_column="lastModified")
-    enabled = models.IntegerField(
-        _("enabled"), null=True, db_column="enabled", default=1
-    )
-
-    class Meta:
-        db_table = u"CommandType"
-
-
-class Command(models.Model):
-    uuid = models.CharField(max_length=36, primary_key=True, db_column="pk")
-    # commandType = models.ForeignKey(CommandType, db_column='commandType')
-    commandUsage = models.CharField(_("command usage"), max_length=15)
-    commandType = models.CharField(_("command type"), max_length=36)
-    # verificationCommand = models.ForeignKey('self', null=True, related_name='+', db_column='verificationCommand')
-    verificationCommand = models.CharField(
-        _("verification command"), max_length=36, null=True
-    )
-    # eventDetailCommand = models.ForeignKey('self', null=True, related_name='+', db_column='eventDetailCommand')
-    eventDetailCommand = models.CharField(
-        _("event detail command"), max_length=36, null=True
-    )
-    # supportedBy = models.ForeignKey('self', null=True, related_name='+', db_column='supportedBy')
-    supportedBy = models.CharField(
-        _("supported by"), max_length=36, null=True, db_column="supportedBy"
-    )
-    command = models.TextField(_("command"), db_column="command")
-    outputLocation = models.TextField(
-        _("output location"), db_column="outputLocation", null=True
-    )
-    description = models.TextField(_("description"), db_column="description")
-    outputFileFormat = models.TextField(
-        _("output file format"), db_column="outputFileFormat", null=True
-    )
-    # replaces = models.ForeignKey('self', related_name='+', db_column='replaces', null=True)
-    replaces = models.CharField(
-        _("replaces"), max_length=36, null=True, db_column="replaces"
-    )
-    lastmodified = models.DateTimeField(
-        _("last modified"), db_column="lastModified", null=True
-    )
-    enabled = models.IntegerField(
-        _("enabled"), null=True, db_column="enabled", default=1
-    )
-
-    class Meta:
-        db_table = u"Command"
-
-
-class CommandsSupportedBy(models.Model):
-    uuid = models.CharField(max_length=36, primary_key=True, db_column="pk")
-    description = models.TextField(_("description"), null=True, db_column="description")
-    # replaces = models.ForeignKey(Command)
-    replaces = models.CharField(
-        _("replaces"), max_length=36, null=True, db_column="replaces"
-    )
-    lastmodified = models.DateTimeField(_("last modified"), db_column="lastModified")
-    enabled = models.IntegerField(
-        _("enabled"), null=True, db_column="enabled", default=1
-    )
-
-    class Meta:
-        db_table = u"CommandsSupportedBy"
-
-    def __unicode__(self):
-        return u"{}".format(self.description)
-
-
-class FileIDType(models.Model):
-    uuid = models.CharField(max_length=36, primary_key=True, db_column="pk")
-    description = models.TextField(_("description"), null=True, db_column="description")
-    replaces = models.CharField(
-        _("replaces"), null=True, max_length=36, db_column="replaces"
-    )
-    lastmodified = models.DateTimeField(_("last modified"), db_column="lastModified")
-    enabled = models.IntegerField(
-        _("enabled"), null=True, db_column="enabled", default=1
-    )
-
-    class Meta:
-        db_table = u"FileIDType"
-
-
-class FileID(models.Model):
-    uuid = models.CharField(max_length=36, primary_key=True, db_column="pk")
-    description = models.TextField(_("description"), db_column="description")
-    validpreservationformat = models.IntegerField(
-        _("valid preservation format"),
-        null=True,
-        db_column="validPreservationFormat",
-        default=0,
-    )
-    validaccessformat = models.IntegerField(
-        _("valid access format"), null=True, db_column="validAccessFormat", default=0
-    )
-    # fileidtype = models.ForeignKey(FileIDType, null=True, blank=True, default = None)
-    fileidtype = models.CharField(
-        _("file ID type"), max_length=36, null=True, db_column="fileidtype_id"
-    )
-    replaces = models.CharField(
-        _("replaces"), null=True, max_length=36, db_column="replaces"
-    )
-    lastmodified = models.DateTimeField(_("last modified"), db_column="lastModified")
-    enabled = models.IntegerField(
-        _("enabled"), null=True, db_column="enabled", default=1
-    )
-
-    # V2 API
-    format = models.ForeignKey(
-        "FormatVersion",
-        to_field="uuid",
-        null=True,
-        verbose_name=_("the related format"),
-        on_delete=models.CASCADE,
-    )
-
-    class Meta:
-        db_table = u"FileID"
-
-
-class CommandClassification(models.Model):
-    uuid = models.CharField(max_length=36, primary_key=True, db_column="pk")
-    classification = models.TextField(
-        _("classification"), null=True, db_column="classification"
-    )
-    replaces = models.CharField(
-        _("replaces"), null=True, max_length=36, db_column="replaces"
-    )
-    lastmodified = models.DateTimeField(_("last modified"), db_column="lastModified")
-    enabled = models.IntegerField(
-        _("enabled"), null=True, db_column="enabled", default=1
-    )
-
-    class Meta:
-        db_table = u"CommandClassification"
-
-
-class CommandRelationship(models.Model):
-    uuid = models.CharField(max_length=36, primary_key=True, db_column="pk")
-    # commandClassification = models.ForeignKey(CommandClassification, db_column='commandClassification')
-    commandClassification = models.CharField(_("command clasification"), max_length=36)
-    # command = models.ForeignKey(Command, null=True, db_column='command')
-    # fileID = models.ForeignKey(FileID, db_column='fileID')
-    # replaces = models.CharField(null=True, max_length=36, db_column='replaces')
-    command = models.CharField(_("command"), max_length=36, null=True)
-    fileID = models.CharField(_("file ID"), max_length=36, null=True)
-    replaces = models.CharField(_("replaces"), max_length=36, null=True)
-    lastmodified = models.DateTimeField(_("last modified"), db_column="lastModified")
-    enabled = models.IntegerField(
-        _("enabled"), null=True, db_column="enabled", default=1
-    )
-
-    class Meta:
-        db_table = u"CommandRelationship"
-
-
-class FileIDsBySingleID(models.Model):
-    uuid = models.CharField(max_length=36, primary_key=True, db_column="pk")
-    # fileID = models.ForeignKey(FileID, db_column='fileID')
-    fileID = models.CharField(_("file ID"), max_length=36, null=True)
-    id = models.TextField(db_column="id")
-    tool = models.TextField(_("tool"), db_column="tool")
-    toolVersion = models.TextField(
-        _("tool version"), db_column="toolVersion", null=True
-    )
-    replaces = models.CharField(
-        _("replaces"), null=True, max_length=36, db_column="replaces"
-    )
-    lastmodified = models.DateTimeField(_("last modified"), db_column="lastModified")
-    enabled = models.IntegerField(
-        _("enabled"), null=True, db_column="enabled", default=1
-    )
-
-    class Meta:
-        db_table = u"FileIDsBySingleID"
