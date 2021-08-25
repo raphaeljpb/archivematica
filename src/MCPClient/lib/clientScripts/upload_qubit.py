@@ -118,9 +118,13 @@ def start(job, data):
     # The target columns contents a serialized Python dictionary
     # - target is the permalink string
     try:
-        target = six.moves.cPickle.loads(access.target.encode("utf8"))
+        if isinstance(access.target, str):
+            target = six.moves.cPickle.loads(access.target.encode("utf8"))
+        else:
+            target = six.moves.cPickle.loads(access.target)
         log("Target: %s" % (target["target"]))
-    except:
+    except Exception as err:
+        log(err)
         return error(job, "No target was selected")
 
     # Rsync if data.rsync_target option was passed to this script
